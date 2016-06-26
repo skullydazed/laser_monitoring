@@ -30,28 +30,28 @@ Repository Contents
 Arduino Shield
 --------------
 
-* `[doc/Arduino Shield Gerbers](doc/Arduino Shield Gerbers)` - This directory
+* [doc/Arduino Shield Gerbers](doc/Arduino Shield Gerbers) - This directory
   contains gerbers for the Arduino Shield.
-* `[doc/Arduino Shield Schematic.png](doc/Arduino Shield Schematic.png)` - The
+* [doc/Arduino Shield Schematic.png](doc/Arduino Shield Schematic.png) - The
   schematic for hooking up the sensors to the Arduino.
-* `[CAD/Laser Monitor.brd](Laser Monitor.brd)` and
-  `[CAD/Laser Monitor.sch](Laser Monitor.sch)` - EAGLE files for the Arduino
+* [CAD/Laser Monitor.brd](Laser Monitor.brd) and
+  [CAD/Laser Monitor.sch](Laser Monitor.sch) - EAGLE files for the Arduino
   Shield
 
 Raspberry Pi
 ------------
 
-* `[CAD/Laser Cut Case.dxf](CAD/Laser Cut Case.dxf)` - Plans for a case that
+* [CAD/Laser Cut Case.dxf](CAD/Laser Cut Case.dxf) - Plans for a case that
   can contain the Raspberry Pi
 
 Software
 --------
 
-* `[Laser_Monitoring.ino](Laser_Monitoring.ino)` - Arduino sketch for reading
+* [Laser_Monitoring.ino](Laser_Monitoring.ino) - Arduino sketch for reading
   and reporting data over serial
-* `[laserd](laserd)` - Python 3.4 script to fetch readings and shove
+* [laserd](laserd) - Python 3.4 script to fetch readings and shove
   them into an RRD
-* `[laser_lcd](laser_lcd)` - Python 3.4 script to fetch readings from RRD and
+* [laser_lcd](laser_lcd) - Python 3.4 script to fetch readings from RRD and
   display them on a PiFace Control and Display board
 
 Required Parts
@@ -89,7 +89,7 @@ Program The Arduino
 (You can do this part on any computer, it doesn't have to be the monitoring
 computer.)
 
-1. Open the `[Laser_Monitoring.ino](Laser_Monitoring.ino)` file in the Arduino
+1. Open the [Laser_Monitoring.ino](Laser_Monitoring.ino) file in the Arduino
    IDE
 2. Upload the sketch to the Arduino
 3. Open up the Serial Monitor (Tools -> Serial Monitor)
@@ -135,7 +135,7 @@ Systemd
 =======
 
 If you're using a systemd based distribution you can use
-`[setup_systemd.sh](setup_systemd.sh)` to setup the RRD file and the services
+[setup_systemd.sh](setup_systemd.sh) to setup the RRD file and the services
 that will write to and read from that RRD.
 
 TODO
