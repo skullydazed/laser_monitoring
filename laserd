@@ -1,5 +1,8 @@
+#!/usr/bin/env python3.4
 import serial
+import shlex
 import time
+from subprocess import call
 
 
 def to_volt(reading):
@@ -15,6 +18,7 @@ def split_line(raw_line):
 
        Each field is a voltage between 0 and 5v
     """
+    raw_line = raw_line.decode('utf-8')
     datapoints = raw_line.strip().split('\t')
     datapoints = map(to_volt, datapoints)
 
@@ -24,10 +28,13 @@ def split_line(raw_line):
 def handle_data(current1, current2, current3, dc_current, temp1, temp2):
     """Write the datapoints out to a file or print them or something.
     """
-    print time.time(), u'current1:%s current2:%s current3:%s dc_current:%s temp1:%s F temp2:%s F' % (current1, current2, current3, dc_current, temp1, temp2)
+    rrd_cmd = shlex.split('rrdtool update readings.rrd N:%s:%s:%s:%s:%s:%s' % (current1, current2, current3, dc_current, temp1, temp2))
+    rrd_exec = call(rrd_cmd)
+    if rrd_exec != 0:
+        print('There was an error. Maybe you should look into that?')
 
 
-with serial.Serial('/dev/cu.usbmodemfa2231', 57600, timeout=5) as arduino:
+with serial.Serial('/dev/ttyACM0', 57600, timeout=5) as arduino:
     while True:
         try:
             current1, current2, current3, dc_current, temp1, temp2 = \

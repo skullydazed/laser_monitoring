@@ -1,0 +1,219 @@
+#!/usr/bin/python3 -u
+"""Display information about the laser and other fun stuff.
+"""
+
+# Configuration - Tweak these to change behavior
+UPDATE_INTERVAL = 10  # Seconds
+WEATHER_STATION = "KCASANTA166"
+WU_URL = "http://api.wunderground.com/weatherstation/WXCurrentObXML.asp?ID="
+WEATHER_URL = WU_URL + WEATHER_STATION
+
+
+from sys import version_info
+
+if version_info[0] < 3:
+    print("This only works with python 3 or greater. Sorry. :(")
+    exit(1)
+
+from socket import setdefaulttimeout, timeout
+from subprocess import check_output, CalledProcessError
+from time import sleep, time
+from threading import Barrier
+from urllib.error import HTTPError
+from urllib.request import urlopen
+from xml.etree.ElementTree import XML
+
+from pifacecad import IODIR_ON, LCDBitmap, PiFaceCAD, SwitchEventListener
+
+
+TEMP_SYMBOL = LCDBitmap([0x4, 0x4, 0x4, 0x4, 0xe, 0xe, 0xe, 0x0])
+WIND_SYMBOL = LCDBitmap([0x0, 0xf, 0x3, 0x5, 0x9, 0x10, 0x0])
+TEMP_SYMBOL_INDEX, WIND_SYMBOL_INDEX = 0, 1
+
+setdefaulttimeout(5)  # set a 5 second network timeout
+
+
+class WeatherStation(object):
+    def __init__(self, weather_id, timeout=300):
+        self.weather_id = weather_id
+        self.timeout = timeout
+
+        self._xmltree = None
+        self._xmltree_time = 0
+
+    def update(self):
+        """Update our cached weather data
+        """
+        try:
+            data = urlopen(WEATHER_URL).read()
+            self._xmltree = XML(data)
+        except (HTTPError, timeout):
+            print('Could not fetch weather data!')
+        self._xmltree_time = time()
+
+    def update_if_stale(self):
+        if time() - self._xmltree_time > self.timeout or not self._xmltree:
+            self.update()
+
+    @property
+    def has_data(self):
+        return self._xmltree is not None
+
+    @property
+    def location(self):
+        self.update_if_stale()
+        return self._xmltree.find('location').find('full').text
+
+    @property
+    def temp_c(self):
+        self.update_if_stale()
+        return str(int(float(self._xmltree.find("temp_c").text)))
+
+    @property
+    def temp_f(self):
+        self.update_if_stale()
+        return str(int(float(self._xmltree.find("temp_f").text)))
+
+    @property
+    def wind_kph(self):
+        self.update_if_stale()
+        mph = float(self.wind_mph)
+        return str(int(mph * 1.609344))
+
+    @property
+    def wind_mph(self):
+        self.update_if_stale()
+        return str(int(float(self._xmltree.find("wind_mph").text)))
+
+
+class LaserDisplay(object):
+    def __init__(self, cad, station):
+        self.last_button_press = 0
+        self.station = WeatherStation(station)
+        self.cad = cad
+        self.cad.lcd.store_custom_bitmap(TEMP_SYMBOL_INDEX, TEMP_SYMBOL)
+        self.cad.lcd.store_custom_bitmap(WIND_SYMBOL_INDEX, WIND_SYMBOL)
+        self.cad.lcd.backlight_on()
+        self.cad.lcd.blink_off()
+        self.cad.lcd.cursor_off()
+
+    def ifconfig(self, event=None):
+        """Display information on how to access this pi.
+        """
+        self.last_button_press = time()+UPDATE_INTERVAL  # Mark the button press time
+        try:
+            ip_cmd = ['hostname', '--all-ip-addresses']
+            ips = check_output(ip_cmd, universal_newlines=True).strip().split()
+
+        except CalledProcessError as e:
+            print("Could not determine IP address, error code %s: %s" % \
+                  (e.returncode, e.output))
+            ips = ['127.0.0.1']
+
+        self.cad.lcd.clear()
+        self.cad.lcd.write('\n'.join(ips))
+
+    def weather_us(self, event=None):
+        """Display legacy formatted weather data for UPDATE_INTERVAL secs
+        """
+        self.station.update_if_stale()   # Fetch weather
+        self.last_button_press = time()  # Mark the button press time
+        self.cad.lcd.clear()
+
+        if self.station.has_data:
+            self.cad.lcd.write(self.station.location + '\n')
+            # temperature
+            self.cad.lcd.write_custom_bitmap(TEMP_SYMBOL_INDEX)
+            self.cad.lcd.write(":")
+            self.cad.lcd.write("{temp}F ".format(temp=self.station.temp_f))
+            # wind
+            self.cad.lcd.write_custom_bitmap(WIND_SYMBOL_INDEX)
+            self.cad.lcd.write(":")
+            self.cad.lcd.write("{wind}mph".format(wind=self.station.wind_mph))
+
+        else:
+            self.cad.lcd.write('No Data. :( Is\n')
+            self.cad.lcd.write('Wunderground Up?')
+
+    def weather_metric(self, event=None):
+        """Display metric weather data for UPDATE_INTERVAL secs
+        """
+        self.station.update_if_stale()   # Fetch weather
+        self.last_button_press = time()  # Mark the button press time
+        self.cad.lcd.clear()
+
+        if self.station.has_data:
+            self.cad.lcd.write(self.station.location + '\n')
+            # temperature
+            self.cad.lcd.write_custom_bitmap(TEMP_SYMBOL_INDEX)
+            self.cad.lcd.write(":")
+            self.cad.lcd.write("{temp}C ".format(temp=self.station.temp_c))
+            # wind
+            self.cad.lcd.write_custom_bitmap(WIND_SYMBOL_INDEX)
+            self.cad.lcd.write(":")
+            self.cad.lcd.write("{wind}km/h".format(wind=self.station.wind_kph))
+
+        else:
+            self.cad.lcd.write('No Data. :( Is\n')
+            self.cad.lcd.write('Wunderground Up?')
+
+    def update(self, event=None):
+        # Fetch data from the RRD
+        try:
+            cmd = ['rrdtool', 'fetch', 'readings.rrd', 'AVERAGE', '-s', '-5s']
+            out = check_output(cmd, universal_newlines=True).strip().split('\n')
+
+        except CalledProcessError as e:
+            print("Could not get RRD information, error code %s: %s" % \
+                  (e.returncode, e.output))
+            return
+
+        # Parse the RRD output
+        for line in out:
+            if not line or line.startswith('current') or 'nan' in line:
+                continue
+            current1, current2, current3, dc_current, temp1, temp2 = \
+                map(float, line.split()[1:])
+
+        # Write the latest rrd data to the display
+        self.cad.lcd.clear()
+        self.cad.lcd.write("%.01fA %.01fA %.01fA\n" % (current1, current2,
+                                                       current3))
+        self.cad.lcd.write("%dmA %.01fC %.01fC" % (dc_current, temp1, temp2))
+
+    def close(self):
+        self.cad.lcd.clear()
+        self.cad.lcd.backlight_off()
+
+
+if __name__ == "__main__":
+    cad = PiFaceCAD()
+    laserdisplay = LaserDisplay(cad, WEATHER_STATION)
+
+    # Setup the button handler
+    switchlistener = SwitchEventListener(chip=cad)
+    switchlistener.dispatcher.daemon = True
+    switchlistener.register(0, IODIR_ON, laserdisplay.weather_us)
+    switchlistener.register(1, IODIR_ON, laserdisplay.weather_metric)
+    switchlistener.register(4, IODIR_ON, laserdisplay.ifconfig)
+    switchlistener.activate()
+
+    # Main loop
+    while True:
+        try:
+            time_since_press = time() - laserdisplay.last_button_press
+            if time_since_press < UPDATE_INTERVAL:
+                # The display is showing the user information, leave it
+                # up for them.
+                sleep(UPDATE_INTERVAL - time_since_press)
+
+            laserdisplay.update()
+            sleep(UPDATE_INTERVAL)
+
+        except KeyboardInterrupt:
+            print('User Interrupt!')
+            break
+
+    # exit
+    laserdisplay.close()
+    switchlistener.deactivate()

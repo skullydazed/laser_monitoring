@@ -1,0 +1,18 @@
+# Systemd service file for the process that reads values from the arduino
+[Unit]
+Description=Laser Monitoring Daemon
+Before=systemd-user-sessions.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/pi/Laser_Monitor
+ExecStart=/home/pi/Laser_Monitor/laserd
+User=pi
+StandardOutput=syslog+console
+StandardError=syslog+console
+
+ExecStop=/bin/kill -s TERM $MAINPID
+User=pi
+
+[Install]
+WantedBy=multi-user.target
